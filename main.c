@@ -13,6 +13,7 @@ DESCRIPTION:
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
+#include <util/delay.h>
 
 #include "uart.h"
 
@@ -20,109 +21,60 @@ DESCRIPTION:
 #define UART_BAUD_RATE      9600      
 
 
-int main(void)
+// ain0 -> pin 23 -> PC0
+void init_reflection (void){
+// die Versorgungsspannung AVcc als Refernz wählen:
+  ADMUX = (1<<REFS0);    
+  // oder interne Referenzspannung als Referenz für den ADC wählen:
+  // ADMUX = (1<<REFS1) | (1<<REFS0);
+ 
+  // Bit ADFR ("free running") in ADCSRA steht beim Einschalten
+  // schon auf 0, also single conversion
+  ADCSRA = (1<<ADPS1) | (1<<ADPS0);     // Frequenzvorteiler
+  ADCSRA |= (1<<ADEN);                  // ADC aktivieren
+ 
+  /* nach Aktivieren des ADC wird ein "Dummy-Readout" empfohlen, man liest
+     also einen Wert und verwirft diesen, um den ADC "warmlaufen zu lassen" */
+ 
+  ADCSRA |= (1<<ADSC);                  // eine ADC-Wandlung 
+  while (ADCSRA & (1<<ADSC) ) {         // auf Abschluss der Konvertierung warten
+  }
+  /* ADCW muss einmal gelesen werden, sonst wird Ergebnis der nächsten
+     Wandlung nicht übernommen. */
+  (void) ADCW;
+}
+
+/* ADC Einzelmessung */
+uint16_t ADC_Read( uint8_t channel )
 {
-    unsigned int c;
-    char buffer[7];
-    int  num=134;
+  // Kanal waehlen, ohne andere Bits zu beeinflußen
+  ADMUX = (ADMUX & ~(0x1F)) | (channel & 0x1F);
+  ADCSRA |= (1<<ADSC);            // eine Wandlung "single conversion"
+  while (ADCSRA & (1<<ADSC) ) {   // auf Abschluss der Konvertierung warten
+  }
+  return ADCW;                    // ADC auslesen und zurückgeben
+}
 
-    
-    /*
-     *  Initialize UART library, pass baudrate and AVR cpu clock
-     *  with the macro 
-     *  UART_BAUD_SELECT() (normal speed mode )
-     *  or 
-     *  UART_BAUD_SELECT_DOUBLE_SPEED() ( double speed mode)
-     */
-    uart_init( UART_BAUD_SELECT(UART_BAUD_RATE,F_CPU) ); 
-    
-    /*
-     * now enable interrupt, since UART library is interrupt controlled
-     */
-    sei();
-    
-    /*
-     *  Transmit string to UART
-     *  The string is buffered by the uart library in a circular buffer
-     *  and one character at a time is transmitted to the UART using interrupts.
-     *  uart_puts() blocks if it can not write the whole string to the circular 
-     *  buffer
-     */
-    uart_puts("String stored in SRAM\n\r");
-    
-    /*
-     * Transmit string from program memory to UART
-     */
-    uart_puts_P("String stored in FLASH\n\r");
-    
-        
-    /* 
-     * Use standard avr-libc functions to convert numbers into string
-     * before transmitting via UART
-     */     
-    itoa( num, buffer, 10);   // convert interger into string (decimal format)         
-    uart_puts(buffer);        // and transmit string to UART
+void check_reflection (void){
+  char buffer[7];
+  for (uint8_t i=0; i<8; i++) {
+	itoa( ADC_Read(i), buffer, 10);   // convert interger into string (decimal format)         
+	uart_puts(buffer);  
+	uart_puts_P(" - ");
+  }
+  uart_puts_P("\r\n");
+}
 
-    
-    /*
-     * Transmit single character to UART
-     */
-    uart_puts("\n\r");
-    
-    for(;;)
-    {
-        /*
-         * Get received character from ringbuffer
-         * uart_getc() returns in the lower byte the received character and 
-         * in the higher byte (bitmask) the last receive error
-         * UART_NO_DATA is returned when no data is available.
-         *
-         */
-        c = uart_getc();
-        if ( c & UART_NO_DATA )
-        {
-            /* 
-             * no data available from UART 
-             */
-        }
-        else
-        {
-            /*
-             * new data available from UART
-             * check for Frame or Overrun error
-             */
-            if ( c & UART_FRAME_ERROR )
-            {
-                /* Framing Error detected, i.e no stop bit detected */
-                uart_puts_P("UART Frame Error: ");
-            }
-            if ( c & UART_OVERRUN_ERROR )
-            {
-                /* 
-                 * Overrun, a character already present in the UART UDR register was 
-                 * not read by the interrupt handler before the next character arrived,
-                 * one or more received characters have been dropped
-                 */
-                uart_puts_P("UART Overrun Error: ");
-            }
-            if ( c & UART_BUFFER_OVERFLOW )
-            {
-                /* 
-                 * We are not reading the receive buffer fast enough,
-                 * one or more received character have been dropped 
-                 */
-                uart_puts_P("Buffer overflow error: ");
-            }
-            /* 
-             * send received character back
-             */
-//            if ((unsigned char)c == '\n')
-//              uart_puts("\\n");
-//            else if ((unsigned char)c == '\r')
-//              uart_puts("\\r");
-//            else
-              uart_putc( (unsigned char)c );
-        }
-    }
-    
+int main(void) {
+
+  uart_init( UART_BAUD_SELECT(UART_BAUD_RATE,F_CPU) ); 
+  init_reflection();
+  sei();
+
+  uart_puts_P("Hugeness Super Truck\n\r");
+  for(;;) {
+	check_reflection();
+	_delay_ms(1000);
+  }
+
 }
