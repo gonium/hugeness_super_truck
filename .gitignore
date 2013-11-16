@@ -16,3 +16,13 @@
 *.exe
 *.out
 *.app
+
+# avr-gcc intermediates
+*.eep
+*.elf
+*.hex
+*.lss
+*.lst
+*.map
+*.sym
+.dep

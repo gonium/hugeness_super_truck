@@ -17,7 +17,7 @@ DESCRIPTION:
 #include "uart.h"
 
 /* serial output baud rate */
-#define UART_BAUD_RATE      57600      
+#define UART_BAUD_RATE      9600      
 
 
 int main(void)
